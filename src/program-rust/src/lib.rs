@@ -1,6 +1,10 @@
 use borsh::*;
 use borsh_derive::BorshSerialize;
 use borsh_derive::BorshDeserialize;
+
+pub mod instructions;
+use crate::instructions::HelloInstruction;
+
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint,
@@ -24,7 +28,7 @@ entrypoint!(process_instruction);
 pub fn process_instruction(
     program_id: &Pubkey, // Public key of the account the hello world program was loaded into
     accounts: &[AccountInfo], // The account to say hello to
-    _instruction_data: &[u8], // Ignored, all helloworld instructions are hellos
+    instruction_data: &[u8],
 ) -> ProgramResult {
     msg!("Hello World Rust program entrypoint");
 
@@ -42,7 +46,22 @@ pub fn process_instruction(
 
     // Increment and store the number of times the account has been greeted
     let mut greeting_account = GreetingAccount::try_from_slice(&account.data.borrow())?;
-    greeting_account.counter += 1;
+
+    if instruction_data.is_empty() {
+        msg!("No instructions");
+        return Err(ProgramError::InvalidInstructionData)
+    }
+
+    let instruction = HelloInstruction::unpack(instruction_data)?;
+    match instruction {
+        HelloInstruction::Increment => {
+            greeting_account.counter += 1;
+        },
+        HelloInstruction::Decrement => {
+            greeting_account.counter -= 1;
+        }
+    }
+
     greeting_account.serialize(&mut &mut account.data.borrow_mut()[..])?;
 
     msg!("Greeted {} time(s)!", greeting_account.counter);
@@ -74,8 +93,8 @@ mod test {
             false,
             Epoch::default(),
         );
-        let instruction_data: Vec<u8> = Vec::new();
-
+        let increment_instruction_data: Vec<u8> = vec![0];
+        let decrement_instruction_data: Vec<u8> = vec![1];
         let accounts = vec![account];
 
         assert_eq!(
@@ -84,15 +103,32 @@ mod test {
                 .counter,
             0
         );
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
+
+        process_instruction(&program_id, &accounts, &increment_instruction_data).unwrap();
         assert_eq!(
             GreetingAccount::try_from_slice(&accounts[0].data.borrow())
                 .unwrap()
                 .counter,
             1
         );
-        process_instruction(&program_id, &accounts, &instruction_data).unwrap();
+
+        process_instruction(&program_id, &accounts, &increment_instruction_data).unwrap();
         assert_eq!(
+            GreetingAccount::try_from_slice(&accounts[0].data.borrow())
+                .unwrap()
+                .counter,
+            2
+        );
+
+        process_instruction(&program_id, &accounts, &decrement_instruction_data).unwrap();
+        assert_eq!(
+            GreetingAccount::try_from_slice(&accounts[0].data.borrow())
+                .unwrap()
+                .counter,
+            1
+        );
+
+        assert_ne!(
             GreetingAccount::try_from_slice(&accounts[0].data.borrow())
                 .unwrap()
                 .counter,

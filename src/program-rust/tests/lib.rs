@@ -48,7 +48,7 @@ async fn test_helloworld() {
     let mut transaction = Transaction::new_with_payer(
         &[Instruction::new_with_bincode(
             program_id,
-            &[0], // ignored but makes the instruction unique in the slot
+            &[0],
             vec![AccountMeta::new(greeted_pubkey, false)],
         )],
         Some(&payer.pubkey()),
@@ -73,12 +73,19 @@ async fn test_helloworld() {
     let mut transaction = Transaction::new_with_payer(
         &[Instruction::new_with_bincode(
             program_id,
-            &[1], // ignored but makes the instruction unique in the slot
+            &[0],
             vec![AccountMeta::new(greeted_pubkey, false)],
         )],
         Some(&payer.pubkey()),
     );
-    transaction.sign(&[&payer], recent_blockhash);
+    
+    // move to next slot since instruction must be unique to the slot and these instructions are same as before
+    let latest_blockhash = &banks_client.get_latest_blockhash().await.unwrap();
+    let new_blockhash = banks_client
+        .get_new_latest_blockhash(latest_blockhash)
+        .await.unwrap();
+
+    transaction.sign(&[&payer], new_blockhash);
     banks_client.process_transaction(transaction).await.unwrap();
 
     // Verify account has two greetings
@@ -93,4 +100,30 @@ async fn test_helloworld() {
             .counter,
         2
     );
+
+    // Remove greet
+    let mut transaction = Transaction::new_with_payer(
+        &[Instruction::new_with_bincode(
+            program_id,
+            &[1],
+            vec![AccountMeta::new(greeted_pubkey, false)],
+        )],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[&payer], new_blockhash);
+    banks_client.process_transaction(transaction).await.unwrap();
+
+    // Verify account has one greeting
+    let greeted_account = banks_client
+        .get_account(greeted_pubkey)
+        .await
+        .expect("get_account")
+        .expect("greeted_account not found");
+    assert_eq!(
+        GreetingAccount::try_from_slice(&greeted_account.data)
+            .unwrap()
+            .counter,
+        1
+    );
+
 }
