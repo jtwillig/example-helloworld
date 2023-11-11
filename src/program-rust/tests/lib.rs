@@ -126,4 +126,30 @@ async fn test_helloworld() {
         1
     );
 
+    // Reset greetings
+    let mut transaction = Transaction::new_with_payer(
+        &[Instruction::new_with_bincode(
+            program_id,
+            &[2],
+            vec![AccountMeta::new(greeted_pubkey, false)],
+        )],
+        Some(&payer.pubkey()),
+    );
+    transaction.sign(&[&payer], new_blockhash);
+    banks_client.process_transaction(transaction).await.unwrap();
+
+    // Verify account has no greetings
+    let greeted_account = banks_client
+        .get_account(greeted_pubkey)
+        .await
+        .expect("get_account")
+        .expect("greeted_account not found");
+    assert_eq!(
+        GreetingAccount::try_from_slice(&greeted_account.data)
+            .unwrap()
+            .counter,
+        0
+    );
+
+
 }
